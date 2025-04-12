@@ -26,7 +26,7 @@ import soundfile as sf
 import librosa
 import torch
 import redis
-import time
+import asyncio
 from sentence_transformers import SentenceTransformer  # For semantic search
 
 # DeepFilterNet for noise reduction
@@ -62,6 +62,18 @@ semantic_model = SentenceTransformer('all-MiniLM-L6-v2')
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Global variables for denoiser
+df_model = None
+df_state = None
+
+# Lock for transcription
+transcription_lock = asyncio.Lock()
+
+@app.on_event("startup")
+async def startup_event():
+    global df_model, df_state
+    df_model, df_state, _ = init_df()
 
 def convert_to_wav(input_path: Path, output_path: Path) -> None:
     """
@@ -120,8 +132,9 @@ async def voice_to_text(audio: UploadFile = File(...)) -> Dict[str, str]:
         convert_to_wav(input_path, output_path)
 
         # Transcribe original audio
-        original_result = model.transcribe(str(output_path))
-        original_text = original_result['text'].strip()
+        async with transcription_lock:
+            original_result = model.transcribe(str(output_path))
+            original_text = original_result['text'].strip()
 
         # Noise reduction processing
         try:
@@ -138,8 +151,6 @@ async def voice_to_text(audio: UploadFile = File(...)) -> Dict[str, str]:
             if data_tensor.ndim == 1:
                 data_tensor = data_tensor.unsqueeze(0)
 
-            # Initialize DeepFilterNet
-            df_model, df_state, _ = init_df()
             enhanced_audio_tensor = enhance(df_model, df_state, data_tensor)
             enhanced_audio = enhanced_audio_tensor.cpu().numpy()
 
@@ -154,8 +165,9 @@ async def voice_to_text(audio: UploadFile = File(...)) -> Dict[str, str]:
                 sf.write(str(denoised_path), enhanced_audio, sr)
             
             # Transcribe denoised audio
-            denoised_result = model.transcribe(str(denoised_path))
-            denoised_text = denoised_result["text"].strip()
+            async with transcription_lock:
+                denoised_result = model.transcribe(str(denoised_path))
+                denoised_text = denoised_result["text"].strip()
         except Exception as denoise_error:
             logger.error(f"Noise reduction failed: {str(denoise_error)}")
             denoised_text = "Noise reduction unavailable"
@@ -164,7 +176,11 @@ async def voice_to_text(audio: UploadFile = File(...)) -> Dict[str, str]:
             "original_text": original_text,
             "denoised_text": denoised_text
         }
+    except subprocess.CalledProcessError as e:
 
+        logger.error(f"Audio conversion failed: {str(e)}")
+
+        raise HTTPException(500, detail="Audio conversion failed")
     except Exception as e:
         logger.error(f"Transcription failed: {str(e)}", exc_info=True)
         raise HTTPException(500, detail=f"Transcription error: {str(e)}")
@@ -224,18 +240,22 @@ async def speech_to_search(websocket: WebSocket):
             
             if len(buffer) >= 5:  # Process every 5 chunks
                 full_audio = np.concatenate(buffer)
-                result = model.transcribe(full_audio)
-                await websocket.send_text(result["text"])
-                
-                # Get autocomplete suggestions
-                suggestions = await autocomplete(result["text"])
-                await websocket.send_json(suggestions)
+                async with transcription_lock:
+                    result = model.transcribe(full_audio)
+                transcription_text = result["text"].strip()
+                suggestions = await autocomplete(transcription_text)
+                await websocket.send_json({
+                    "transcription": transcription_text,
+                    "suggestions": suggestions
+                })
+                redis_conn.zincrby('autocomplete_index', 1, transcription_text.lower())
                 buffer = []
                 
     except WebSocketDisconnect:
         logger.info("Client disconnected")
     except Exception as e:
         logger.error(f"WebSocket error: {str(e)}")
+        await websocket.send_json({"error": "Error processing audio"})
     finally:
         await websocket.close()
 
