@@ -49,6 +49,17 @@ Autocomplete example:
 curl "http://127.0.0.1:8000/api/autocomplete?q=find%20me"
 ```
 
+## Run automated tests
+
+The tests mock the transcription function, so they do not download Whisper weights or require FFmpeg. Install the API/test dependencies and run:
+
+```bash
+python -m pip install fastapi python-multipart "httpx>=0.27,<1.0" "pytest>=8,<9"
+python -m pytest -q
+```
+
+GitHub Actions runs this lightweight test suite on pushes and pull requests. The tests cover autocomplete responses, invalid/empty/oversized uploads, the mocked transcription response, and the WebSocket response. They do not measure real transcription accuracy or latency.
+
 ## Limitations and next steps
 
 - No denoising pipeline or measured before/after accuracy comparison is included.
