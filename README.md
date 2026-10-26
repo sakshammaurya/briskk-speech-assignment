@@ -65,5 +65,5 @@ GitHub Actions runs this lightweight test suite on pushes and pull requests. The
 - No denoising pipeline or measured before/after accuracy comparison is included.
 - Autocomplete currently uses static templates rather than search history, Redis, embeddings, or ranking.
 - WebSocket clients must send complete encoded WAV files per message; arbitrary microphone chunks may not be independently decodable.
-- No automated test suite or deployment configuration is included yet.
+- No deployment configuration is included yet.
 - For production, add tests, rate limiting, authentication where appropriate, structured logging, request timeouts, and workload isolation for CPU-heavy transcription.
