@@ -1,15 +1,21 @@
 from pathlib import Path
 import tempfile
 
-import whisper
 from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 
 app = FastAPI(title="Speech-to-Text API")
 MAX_AUDIO_BYTES = 10 * 1024 * 1024
 ALLOWED_SUFFIXES = {".wav", ".mp3", ".m4a", ".mpeg", ".mpga", ".webm", ".ogg"}
+_model = None
 
-# Load once per worker process. Whisper also requires FFmpeg to be installed.
-model = whisper.load_model("tiny")
+
+def get_model():
+    """Load Whisper on first transcription, not while importing the API module."""
+    global _model
+    if _model is None:
+        import whisper
+        _model = whisper.load_model("tiny")
+    return _model
 
 
 def transcribe_bytes(audio_data: bytes, suffix: str) -> str:
@@ -20,7 +26,7 @@ def transcribe_bytes(audio_data: bytes, suffix: str) -> str:
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=True) as audio_file:
         audio_file.write(audio_data)
         audio_file.flush()
-        result = model.transcribe(audio_file.name)
+        result = get_model().transcribe(audio_file.name)
     return result["text"].strip()
 
 
@@ -28,12 +34,15 @@ def transcribe_bytes(audio_data: bytes, suffix: str) -> str:
 async def voice_to_text(audio: UploadFile = File(...)):
     suffix = Path(audio.filename or "").suffix.lower()
     if suffix not in ALLOWED_SUFFIXES:
+        await audio.close()
         raise HTTPException(status_code=415, detail="Unsupported audio format")
 
     audio_data = await audio.read(MAX_AUDIO_BYTES + 1)
     if len(audio_data) > MAX_AUDIO_BYTES:
+        await audio.close()
         raise HTTPException(status_code=413, detail="Audio file exceeds 10 MB limit")
     if not audio_data:
+        await audio.close()
         raise HTTPException(status_code=400, detail="Audio file is empty")
 
     try:
