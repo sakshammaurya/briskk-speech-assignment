@@ -1,124 +1,58 @@
-# 🗣️ Briskk Speech-to-Text Assignment
+# Speech-to-Text API (FastAPI + Whisper)
 
-## 📌 Introduction
+A small demonstration API for speech transcription, query suggestions, and a WebSocket endpoint that accepts complete audio payloads. This is a prototype, not a production-ready real-time streaming system.
 
-Welcome to the **Briskk AI Speech-to-Text Assignment**! 🎤  
-This challenge will test your **AI integration, API development, and problem-solving skills** through a **structured sequence of tasks**.  
+## What is implemented
 
-🚀 **Your Goal:** Build a **real-time, noise-resilient voice-based search assistant** that:
-✅ Converts voice input (audio file or live mic input) into text.  
-✅ Suggests **smart search autocompletions** based on user intent.  
-✅ Handles **noisy background audio** and improves speech accuracy.  
-✅ Supports **real-time speech-to-search via WebSockets**.  
+- `POST /api/voice-to-text`: transcribes an uploaded audio file using Whisper's `tiny` model.
+- `GET /api/autocomplete?q=...`: returns simple template-based suggestions. Suggestions are **not** personalized, embedding-based, or popularity-ranked.
+- `WS /ws/speech-to-search`: accepts one complete WAV-encoded audio file per WebSocket message and returns a transcription. It does not process raw microphone frames or perform noise reduction.
 
----
+The Whisper model is loaded when the application process starts. The first startup can take time, and transcription speed depends on the machine. FFmpeg is required by Whisper.
 
-## 📋 **Assignment Structure**
-To ensure a smooth progression, complete each **task in sequence**:  
+## Requirements
 
-### **🔹 Task 1: Speech Recognition API (Baseline)**
-✅ Implement a **FastAPI service** that:  
-- Accepts an **audio file** and converts speech to text using **OpenAI Whisper or Mozilla DeepSpeech**.  
-- Returns JSON output `{ "text": "<transcribed text>" }`.  
-- **Test Input:** `sample_data/clean_audio/sample_english.wav`  
-- **Expected Output:** `"Find me a red dress"`  
+- Python 3.10 or newer (use a version supported by your installed PyTorch/Whisper build)
+- FFmpeg installed and available on your PATH
+- Enough memory and disk space for PyTorch and the Whisper model
 
-**📌 API:**  
-```http
-POST /api/voice-to-text
-Content-Type: multipart/form-data
-```  
+## Run locally
 
----
-
-### **🔹 Task 2: Handle Noisy Audio (Advanced AI Processing)**
-✅ Enhance speech recognition by:  
-- **Filtering background noise** using **RNNoise, DeepFilterNet, or PyDub**.  
-- Comparing accuracy with and without noise removal.  
-- **Test Input:** `sample_data/noisy_audio/sample_noisy.wav`  
-- **Expected Output (after denoising):** `"Find me a red dress"`  
-
-**📌 Evaluation Criteria:**  
-✔ Speech accuracy **before vs after** noise removal.  
-✔ Processing **time must remain <1s**.  
-
----
-
-### **🔹 Task 3: Smart Search Autocomplete (AI Ranking)**
-✅ Implement an API that:  
-- **Suggests relevant results** based on user **intent & previous searches**.  
-- **Ranks results dynamically** based on **popularity & trends**.  
-- **Test Input:** `"find me"`  
-- **Expected Output:** `[ "find me a red dress", "find me a jacket" ]`  
-
-**📌 API:**  
-```http
-GET /api/autocomplete?q=find+me
-```  
-
-**📌 How to Improve?**  
-- Store previous searches in **Redis** for ranking.  
-- Use **AI embeddings (OpenAI or BERT)** for better matching.  
-
----
-
-### **🔹 Task 4(optional): Real-Time Speech-to-Search (WebSockets)**
-✅ Upgrade the system to **process live speech queries** via WebSockets:  
-- Accept **real-time audio streams**.  
-- **Continuously transcribe & autocomplete** results dynamically.  
-- **Test:** Use a **live microphone** input.  
-
-**📌 API WebSocket:**  
-```ws
-/ws/speech-to-search
-```  
-
-✔ **Bonus**: Deploy the system using **Docker & AWS Lambda**.  
-
----
-
-## 🔬 **Test Cases** (For Self-Validation)
-
-| **Test Case** | **Input** | **Expected Output** |
-|--------------|----------|----------------|
-| **Speech Recognition** | `sample_data/clean_audio/sample_english.wav` | `"Find me a red dress"` |
-| **Noisy Speech** | `sample_data/noisy_audio/sample_noisy.wav` | `"Find me a red dress"` |
-| **Autocomplete Query** | `"find me"` | `["find me a red dress", "find me a jacket"]` |
-| **Live Streaming** | Microphone | Real-time suggestions |
-
-📂 All **sample audio files** are provided in `sample_data/`.  
-
----
-
-## 🏗️ **Setup & Running Instructions**
-
-### **1️⃣ Install Dependencies**
 ```bash
-pip install fastapi uvicorn openai-whisper soundfile numpy scipy
+python -m venv .venv
+# Windows:
+.venv\Scripts\activate
+# macOS/Linux:
+source .venv/bin/activate
+
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+uvicorn src.main:app --host 127.0.0.1 --port 8000
 ```
 
-### **2️⃣ Run the API**
+Open [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) for the interactive API docs.
+
+## API usage
+
+Upload a supported audio file (WAV, MP3, M4A, MPEG/MPGA, WebM, or OGG) to `POST /api/voice-to-text` as multipart form data using the field name `audio`. Uploads are limited to 10 MB.
+
+Example with curl:
+
 ```bash
-uvicorn src.main:app --reload
+curl -X POST "http://127.0.0.1:8000/api/voice-to-text" \
+  -F "audio=@sample.wav"
 ```
 
-### **3️⃣ Test API**
-- Open **Swagger Docs** → [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)  
-- Upload `sample_audio_english.wav` and check transcription accuracy.  
+Autocomplete example:
 
----
+```bash
+curl "http://127.0.0.1:8000/api/autocomplete?q=find%20me"
+```
 
-## 🚀 **Submission Guidelines**
+## Limitations and next steps
 
-📌 **Fork this repo & create a new branch `candidate-<yourname>`**.  
-📌 **Push your implementation & submit a Pull Request (PR)**.  
-📌 **Explain your approach in a README ( Document trade-offs (e.g., why Whisper vs. DeepSpeech, Redis vs. Pinecone for ranking))**.
-📌 **Good to have - A deployed version **.  
-
-For questions, contact us at: **wizard@briskk.one**  
-
----
-
-## 📩 **Contact & Discussion**
-
-📢 Have questions? Drop an email at **wizard@briskk.one** 🚀
+- No denoising pipeline or measured before/after accuracy comparison is included.
+- Autocomplete currently uses static templates rather than search history, Redis, embeddings, or ranking.
+- WebSocket clients must send complete encoded WAV files per message; arbitrary microphone chunks may not be independently decodable.
+- No automated test suite or deployment configuration is included yet.
+- For production, add tests, rate limiting, authentication where appropriate, structured logging, request timeouts, and workload isolation for CPU-heavy transcription.
